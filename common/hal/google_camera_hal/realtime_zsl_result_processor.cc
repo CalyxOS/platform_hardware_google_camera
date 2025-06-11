@@ -63,7 +63,8 @@ RealtimeZslResultProcessor::RealtimeZslResultProcessor(
 
 void RealtimeZslResultProcessor::SetResultCallback(
     ProcessCaptureResultFunc process_capture_result, NotifyFunc notify,
-    ProcessBatchCaptureResultFunc /*process_batch_capture_result*/) {
+    ProcessBatchCaptureResultFunc /*process_batch_capture_result*/,
+    NotifyBatchFunc /*notify_batch*/) {
   std::lock_guard<std::mutex> lock(callback_lock_);
   process_capture_result_ = process_capture_result;
   notify_ = notify;

@@ -23,6 +23,7 @@
 #include <log/log.h>
 #include <utils/Trace.h>
 
+#include "hal_types.h"
 #include "hal_utils.h"
 
 namespace android {
@@ -53,7 +54,8 @@ SnapshotResultProcessor::SnapshotResultProcessor(
 }
 void SnapshotResultProcessor::SetResultCallback(
     ProcessCaptureResultFunc process_capture_result, NotifyFunc notify,
-    ProcessBatchCaptureResultFunc /*process_batch_capture_result*/) {
+    ProcessBatchCaptureResultFunc /*process_batch_capture_result*/,
+    NotifyBatchFunc /*notify_batch*/) {
   ATRACE_CALL();
   std::lock_guard<std::mutex> lock(callback_lock_);
   process_capture_result_ = process_capture_result;

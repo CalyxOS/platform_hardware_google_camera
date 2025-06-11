@@ -19,6 +19,7 @@
 
 #include <vector>
 
+#include "hal_types.h"
 #include "result_processor.h"
 
 namespace android {
@@ -35,7 +36,8 @@ class BasicResultProcessor : public ResultProcessor {
   // Override functions of ResultProcessor start.
   void SetResultCallback(
       ProcessCaptureResultFunc process_capture_result, NotifyFunc notify,
-      ProcessBatchCaptureResultFunc process_batch_capture_result) override;
+      ProcessBatchCaptureResultFunc process_batch_capture_result,
+      NotifyBatchFunc notify_batch) override;
 
   status_t AddPendingRequests(
       const std::vector<ProcessBlockRequest>& process_block_requests,
@@ -46,6 +48,9 @@ class BasicResultProcessor : public ResultProcessor {
   void ProcessBatchResult(std::vector<ProcessBlockResult> block_results) override;
 
   void Notify(const ProcessBlockNotifyMessage& block_message) override;
+
+  void NotifyBatch(
+      const std::vector<ProcessBlockNotifyMessage>& block_messages) override;
 
   status_t FlushPendingRequests() override;
   // Override functions of ResultProcessor end.
@@ -60,6 +65,7 @@ class BasicResultProcessor : public ResultProcessor {
   ProcessCaptureResultFunc process_capture_result_;
   ProcessBatchCaptureResultFunc process_batch_capture_result_;
   NotifyFunc notify_;
+  NotifyBatchFunc notify_batch_;
 };
 
 }  // namespace google_camera_hal

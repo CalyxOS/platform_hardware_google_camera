@@ -23,6 +23,7 @@
 #include <log/log.h>
 #include <utils/Trace.h>
 
+#include "hal_types.h"
 #include "utils.h"
 
 namespace android {
@@ -65,19 +66,21 @@ status_t ZslResultDispatcher::Initialize(
   notify_ = NotifyFunc(
       [this](const NotifyMessage& message) { NotifyHalMessage(message); });
 
-  normal_result_dispatcher_ = std::unique_ptr<ResultDispatcher>(
-      new ResultDispatcher(partial_result_count, process_capture_result_,
-                           /*process_batch_capture_result=*/nullptr, notify_,
-                           stream_config, "ZslNormalDispatcher"));
+  normal_result_dispatcher_ =
+      std::unique_ptr<ResultDispatcher>(new ResultDispatcher(
+          partial_result_count, process_capture_result_,
+          /*process_batch_capture_result=*/nullptr, notify_,
+          /*notify_batch=*/nullptr, stream_config, "ZslNormalDispatcher"));
   if (normal_result_dispatcher_ == nullptr) {
     ALOGE("%s: Creating normal_result_dispatcher_ failed.", __FUNCTION__);
     return BAD_VALUE;
   }
 
-  zsl_result_dispatcher_ = std::unique_ptr<ResultDispatcher>(
-      new ResultDispatcher(partial_result_count, process_capture_result_,
-                           /*process_batch_capture_result=*/nullptr, notify_,
-                           stream_config, "ZslZslDispatcher"));
+  zsl_result_dispatcher_ =
+      std::unique_ptr<ResultDispatcher>(new ResultDispatcher(
+          partial_result_count, process_capture_result_,
+          /*process_batch_capture_result=*/nullptr, notify_,
+          /*notify_batch=*/nullptr, stream_config, "ZslZslDispatcher"));
   if (zsl_result_dispatcher_ == nullptr) {
     ALOGE("%s: Creating zsl_result_dispatcher_ failed.", __FUNCTION__);
     return BAD_VALUE;
@@ -146,17 +149,13 @@ status_t ZslResultDispatcher::AddResult(std::unique_ptr<CaptureResult> result) {
   }
 }
 
-status_t ZslResultDispatcher::AddShutter(uint32_t frame_number,
-                                         int64_t timestamp_ns,
-                                         int64_t readout_timestamp_ns) {
+status_t ZslResultDispatcher::AddShutter(const ShutterMessage& shutter) {
   ATRACE_CALL();
-  bool is_zsl_request = IsZslFrame(frame_number);
+  bool is_zsl_request = IsZslFrame(shutter.frame_number);
   if (is_zsl_request) {
-    return zsl_result_dispatcher_->AddShutter(frame_number, timestamp_ns,
-                                              readout_timestamp_ns);
+    return zsl_result_dispatcher_->AddShutter(shutter);
   } else {
-    return normal_result_dispatcher_->AddShutter(frame_number, timestamp_ns,
-                                                 readout_timestamp_ns);
+    return normal_result_dispatcher_->AddShutter(shutter);
   }
 }
 

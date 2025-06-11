@@ -206,6 +206,12 @@ class CameraDeviceSessionTests : public ::testing::Test {
     callback_condition_.notify_one();
   }
 
+  void NotifyBatch(const std::vector<NotifyMessage>& messages) {
+    for (const auto& message : messages) {
+      Notify(message);
+    }
+  }
+
   void ClearResultsAndMessages() {
     std::lock_guard<std::mutex> lock(callback_lock_);
     received_results_.clear();
@@ -405,6 +411,10 @@ TEST_F(CameraDeviceSessionTests, PreviewRequests) {
             ProcessBatchCaptureResult(std::move(results));
           },
       .notify = [&](const NotifyMessage& message) { Notify(message); },
+      .notify_batch =
+          [&](const std::vector<NotifyMessage>& messages) {
+            NotifyBatch(messages);
+          },
   };
 
   ThermalCallback thermal_callback = {

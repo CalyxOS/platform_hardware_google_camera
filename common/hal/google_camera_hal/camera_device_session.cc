@@ -24,12 +24,17 @@
 #include <system/graphics-base-v1.0.h>
 #include <utils/Trace.h>
 
+#include <optional>
+
 #include "basic_capture_session.h"
 #include "capture_session_utils.h"
 #include "hal_types.h"
 #include "hal_utils.h"
+#include "libgooglecamerahal_flags.h"
+#include "stream_buffer_cache_manager.h"
 #include "system/camera_metadata.h"
 #include "ui/GraphicBufferMapper.h"
+#include "utils.h"
 #include "vendor_tag_defs.h"
 #include "vendor_tag_types.h"
 #include "vendor_tags.h"
@@ -240,54 +245,25 @@ void CameraDeviceSession::ProcessBatchCaptureResult(
 }
 
 void CameraDeviceSession::Notify(const NotifyMessage& result) {
-  {
-    uint32_t frame_number = 0;
-    if (result.type == MessageType::kError) {
-      frame_number = result.message.error.frame_number;
-    } else if (result.type == MessageType::kShutter) {
-      frame_number = result.message.shutter.frame_number;
-    }
-    std::lock_guard<std::mutex> lock(request_record_lock_);
-    // Strip out results for frame number that has been notified
-    // ErrorCode::kErrorResult and ErrorCode::kErrorBuffer
-    if ((error_notified_requests_.find(frame_number) !=
-         error_notified_requests_.end()) &&
-        (result.type != MessageType::kShutter)) {
-      return;
-    }
+  if (ShouldSendNotifyMessage(result)) {
+    std::shared_lock lock(session_callback_lock_);
+    session_callback_.notify(result);
+  }
+}
 
-    if (result.type == MessageType::kError &&
-        result.message.error.error_code == ErrorCode::kErrorResult) {
-      pending_results_.erase(frame_number);
+void CameraDeviceSession::NotifyBatch(const std::vector<NotifyMessage>& results) {
+  std::vector<NotifyMessage> callback_results;
+  callback_results.reserve(results.size());
 
-      if (ignore_shutters_.find(frame_number) == ignore_shutters_.end()) {
-        ignore_shutters_.insert(frame_number);
-      }
-    }
-
-    if (result.type == MessageType::kShutter) {
-      if (ignore_shutters_.find(frame_number) != ignore_shutters_.end()) {
-        ignore_shutters_.erase(frame_number);
-        return;
-      }
+  for (const NotifyMessage& result : results) {
+    if (ShouldSendNotifyMessage(result)) {
+      callback_results.push_back(result);
     }
   }
-
-  if (ATRACE_ENABLED() && result.type == MessageType::kShutter) {
-    int64_t timestamp_ns_diff = 0;
-    int64_t current_timestamp_ns = result.message.shutter.timestamp_ns;
-    if (last_timestamp_ns_for_trace_ != 0) {
-      timestamp_ns_diff = current_timestamp_ns - last_timestamp_ns_for_trace_;
-    }
-
-    last_timestamp_ns_for_trace_ = current_timestamp_ns;
-
-    ATRACE_INT64("sensor_timestamp_diff", timestamp_ns_diff);
-    ATRACE_INT("timestamp_frame_number", result.message.shutter.frame_number);
+  if (!callback_results.empty()) {
+    std::shared_lock lock(session_callback_lock_);
+    session_callback_.notify_batch(callback_results);
   }
-
-  std::shared_lock lock(session_callback_lock_);
-  session_callback_.notify(result);
 }
 
 void CameraDeviceSession::InitializeCallbacks() {
@@ -328,7 +304,12 @@ void CameraDeviceSession::InitializeCallbacks() {
           });
 
   camera_device_session_callback_.notify =
-      NotifyFunc([this](const NotifyMessage& result) { Notify(result); });
+      NotifyFunc([this](const NotifyMessage& message) { Notify(message); });
+
+  camera_device_session_callback_.notify_batch =
+      NotifyBatchFunc([this](const std::vector<NotifyMessage>& messages) {
+        NotifyBatch(messages);
+      });
 
   hwl_session_callback_.request_stream_buffers = HwlRequestBuffersFunc(
       [this](int32_t stream_id, uint32_t num_buffers,
@@ -714,13 +695,24 @@ status_t CameraDeviceSession::ConfigureStreams(
       break;
     }
   }
+
+  // Check if the feature combination in the given StreamConfiguration is
+  // supported by current device.
+  // This is from the requirement that Feature Combination Query API should
+  // provide consistent output with the CreateCaptureSession result. b/401442279
+  if (!device_session_hwl_->IsFeatureCombinationSupported(stream_config)) {
+    ALOGE("%s: IsFeatureCombinationSupported returns false", __FUNCTION__);
+    return BAD_VALUE;
+  }
+
   capture_session_ = CreateCaptureSession(
       stream_config, kWrapperCaptureSessionEntries,
       external_capture_session_entries_, kCaptureSessionEntries,
       hwl_session_callback_, camera_allocator_hwl_, device_session_hwl_.get(),
       &hal_config, camera_device_session_callback_.process_capture_result,
       camera_device_session_callback_.notify,
-      camera_device_session_callback_.process_batch_capture_result);
+      camera_device_session_callback_.process_batch_capture_result,
+      camera_device_session_callback_.notify_batch);
 
   if (capture_session_ == nullptr) {
     ALOGE("%s: Cannot find a capture session compatible with stream config",
@@ -1682,6 +1674,21 @@ status_t CameraDeviceSession::RegisterStreamsIntoCacheManagerLocked(
     const std::vector<HalStream>& hal_streams) {
   ATRACE_CALL();
 
+  std::optional<uint32_t> hfr_batch_size;
+  camera_metadata_ro_entry entry;
+  if (stream_config.operation_mode ==
+          StreamConfigurationMode::kConstrainedHighSpeed &&
+      stream_config.session_params != nullptr &&
+      stream_config.session_params->Get(ANDROID_CONTROL_AE_TARGET_FPS_RANGE,
+                                        &entry) == OK) {
+    uint32_t max_fps = entry.data.i32[1];
+    if (max_fps % 30 != 0) {
+      ALOGE("%s: max_fps(%u) must be multiple of 30", __FUNCTION__, max_fps);
+      return BAD_VALUE;
+    }
+    hfr_batch_size = max_fps / 30;
+  }
+
   for (auto& stream : stream_config.streams) {
     uint64_t producer_usage = 0;
     uint64_t consumer_usage = 0;
@@ -1749,15 +1756,22 @@ status_t CameraDeviceSession::RegisterStreamsIntoCacheManagerLocked(
           return OK;
         });
 
-    StreamBufferCacheRegInfo reg_info = {.request_func = session_request_func,
-                                         .return_func = session_return_func,
-                                         .stream_id = stream_id,
-                                         .width = stream.width,
-                                         .height = stream.height,
-                                         .format = stream_format,
-                                         .producer_flags = producer_usage,
-                                         .consumer_flags = consumer_usage,
-                                         .num_buffers_to_cache = 1};
+    const uint32_t num_buffers_to_cache =
+        libgooglecamerahal::flags::batched_request_buffers() &&
+                hfr_batch_size.has_value() && utils::IsVideoStream(stream)
+            ? *hfr_batch_size
+            : 1;
+
+    StreamBufferCacheRegInfo reg_info = {
+        .request_func = session_request_func,
+        .return_func = session_return_func,
+        .stream_id = stream_id,
+        .width = stream.width,
+        .height = stream.height,
+        .format = stream_format,
+        .producer_flags = producer_usage,
+        .consumer_flags = consumer_usage,
+        .num_buffers_to_cache = num_buffers_to_cache};
 
     status_t res = stream_buffer_cache_manager_->RegisterStream(reg_info);
     if (res != OK) {
@@ -2001,6 +2015,56 @@ void CameraDeviceSession::TrackReturnedBuffers(
       ALOGE("%s: Tracking requested quota buffers failed", __FUNCTION__);
     }
   }
+}
+
+bool CameraDeviceSession::ShouldSendNotifyMessage(const NotifyMessage& result) {
+  {
+    uint32_t frame_number = 0;
+    if (result.type == MessageType::kError) {
+      frame_number = result.message.error.frame_number;
+    } else if (result.type == MessageType::kShutter) {
+      frame_number = result.message.shutter.frame_number;
+    }
+    std::lock_guard<std::mutex> lock(request_record_lock_);
+    // Strip out results for frame number that has been notified
+    // ErrorCode::kErrorResult and ErrorCode::kErrorBuffer
+    if ((error_notified_requests_.find(frame_number) !=
+         error_notified_requests_.end()) &&
+        (result.type != MessageType::kShutter)) {
+      return false;
+    }
+
+    if (result.type == MessageType::kError &&
+        result.message.error.error_code == ErrorCode::kErrorResult) {
+      pending_results_.erase(frame_number);
+
+      if (ignore_shutters_.find(frame_number) == ignore_shutters_.end()) {
+        ignore_shutters_.insert(frame_number);
+      }
+    }
+
+    if (result.type == MessageType::kShutter) {
+      if (ignore_shutters_.find(frame_number) != ignore_shutters_.end()) {
+        ignore_shutters_.erase(frame_number);
+        return false;
+      }
+    }
+  }
+
+  if (ATRACE_ENABLED() && result.type == MessageType::kShutter) {
+    int64_t timestamp_ns_diff = 0;
+    int64_t current_timestamp_ns = result.message.shutter.timestamp_ns;
+    if (last_timestamp_ns_for_trace_ != 0) {
+      timestamp_ns_diff = current_timestamp_ns - last_timestamp_ns_for_trace_;
+    }
+
+    last_timestamp_ns_for_trace_ = current_timestamp_ns;
+
+    ATRACE_INT64("sensor_timestamp_diff", timestamp_ns_diff);
+    ATRACE_INT("timestamp_frame_number", result.message.shutter.frame_number);
+  }
+
+  return true;
 }
 
 }  // namespace google_camera_hal

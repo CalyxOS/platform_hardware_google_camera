@@ -20,6 +20,7 @@
 #include <cutils/native_handle.h>
 #include <system/graphics-base-v1.0.h>
 
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -415,8 +416,12 @@ using ProcessCaptureResultFunc =
 using ProcessBatchCaptureResultFunc =
     std::function<void(std::vector<std::unique_ptr<CaptureResult>> /*results*/)>;
 
-// Callback function invoked to notify messages.
+// Callback function invoked to notify a message.
 using NotifyFunc = std::function<void(const NotifyMessage& /*message*/)>;
+
+// Callback function invoked to notify a batched message.
+using NotifyBatchFunc =
+    std::function<void(const std::vector<NotifyMessage>& /*messages*/)>;
 
 // HAL buffer allocation descriptor
 struct HalBufferDescriptor {

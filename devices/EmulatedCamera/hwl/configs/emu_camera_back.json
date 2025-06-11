@@ -135,24 +135,6 @@
   "240",
   "OUTPUT"
  ],
- "android.depth.availableDynamicDepthMinFrameDurations": [
-  "33",
-  "320",
-  "240",
-  "50000000"
- ],
- "android.depth.availableDynamicDepthStallDurations": [
-  "33",
-  "320",
-  "240",
-  "50000000"
- ],
- "android.depth.availableDynamicDepthStreamConfigurations" : [
-  "33",
-  "320",
-  "240",
-  "OUTPUT"
- ],
  "android.depth.depthIsExclusive": [
   "FALSE"
  ],
@@ -428,7 +410,11 @@
   "524298",
   "524300",
   "524295",
-  "524301"
+  "524301",
+  "1638401",
+  "1638402",
+  "1638403",
+  "1638404"
  ],
  "android.request.availableRequestKeys": [
   "65596",

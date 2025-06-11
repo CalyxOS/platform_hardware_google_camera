@@ -61,7 +61,8 @@ class BasicCaptureSession : public CaptureSession {
       const StreamConfiguration& stream_config,
       ProcessCaptureResultFunc process_capture_result,
       ProcessBatchCaptureResultFunc process_batch_capture_result,
-      NotifyFunc notify, HwlSessionCallback session_callback,
+      NotifyFunc notify, NotifyBatchFunc notify_batch,
+      HwlSessionCallback session_callback,
       std::vector<HalStream>* hal_configured_streams,
       CameraBufferAllocatorHwl* camera_allocator_hwl = nullptr);
 
@@ -84,7 +85,7 @@ class BasicCaptureSession : public CaptureSession {
                       const StreamConfiguration& stream_config,
                       ProcessCaptureResultFunc process_capture_result,
                       ProcessBatchCaptureResultFunc process_batch_capture_result,
-                      NotifyFunc notify,
+                      NotifyFunc notify, NotifyBatchFunc notify_batch,
                       std::vector<HalStream>* hal_configured_streams);
 
   // Configure streams for request processor and process block.
@@ -105,6 +106,7 @@ class BasicCaptureSession : public CaptureSession {
   void Notify(const NotifyMessage& message);
   void ProcessBatchCaptureResult(
       std::vector<std::unique_ptr<CaptureResult>> results);
+  void NotifyBatch(const std::vector<NotifyMessage>& messages);
 
   std::unique_ptr<RequestProcessor> request_processor_;
 

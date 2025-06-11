@@ -520,7 +520,7 @@ status_t ConvertToAidlShutterMessage(
   return OK;
 }
 
-status_t ConverToAidlNotifyMessage(
+status_t ConvertToAidlNotifyMessage(
     const google_camera_hal::NotifyMessage& hal_message,
     NotifyMsg* aidl_message) {
   if (aidl_message == nullptr) {

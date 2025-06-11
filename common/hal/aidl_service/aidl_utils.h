@@ -95,7 +95,7 @@ status_t ConvertToAidlHalStreamConfig(
     const google_camera_hal::ConfigureStreamsReturn& hal_config,
     ConfigureStreamsRet* aidl_config);
 
-status_t ConverToAidlNotifyMessage(
+status_t ConvertToAidlNotifyMessage(
     const google_camera_hal::NotifyMessage& hal_message,
     NotifyMsg* aidl_message);
 

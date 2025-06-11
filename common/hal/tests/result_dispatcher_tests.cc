@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "hal_types.h"
 #include "result_dispatcher.h"
 
 namespace android {
@@ -67,7 +68,7 @@ class ResultDispatcherTests : public ::testing::Test {
         },
         /*process_batch_capture_result=*/nullptr,
         [this](const NotifyMessage& message) { Notify(message); },
-        stream_config, "TestResultDispatcher");
+        /*notify_batch=*/nullptr, stream_config, "TestResultDispatcher");
 
     ASSERT_NE(result_dispatcher_, nullptr)
         << "Creating ResultDispatcher failed";
@@ -319,10 +320,10 @@ TEST_F(ResultDispatcherTests, ShutterOrder) {
 
   // Add unordered shutters to dispatcher.
   for (auto frame_number : unordered_frame_numbers) {
-    EXPECT_EQ(result_dispatcher_->AddShutter(
+    EXPECT_EQ(result_dispatcher_->AddShutter(ShutterMessage{
                   frame_number,
                   frame_number * kFrameDurationNs - kFrameExposureTimeNs,
-                  frame_number * kFrameDurationNs),
+                  frame_number * kFrameDurationNs}),
               OK);
   }
 
@@ -414,10 +415,10 @@ TEST_F(ResultDispatcherTests, ShutterOrderWithRemovePengingRequest) {
   // After erase iter, unordered_frame_numbers = {3, 1, 5, 4, 6};
   unordered_frame_numbers.erase(iter);
   for (auto frame_number : unordered_frame_numbers) {
-    EXPECT_EQ(result_dispatcher_->AddShutter(
+    EXPECT_EQ(result_dispatcher_->AddShutter(ShutterMessage{
                   frame_number,
                   frame_number * kFrameDurationNs - kFrameExposureTimeNs,
-                  frame_number * kFrameDurationNs),
+                  frame_number * kFrameDurationNs}),
               OK);
   }
 

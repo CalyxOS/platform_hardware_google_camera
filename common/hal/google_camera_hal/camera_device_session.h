@@ -46,8 +46,11 @@ struct CameraDeviceSessionCallback {
   // Callback to notify when a camera device produces a batched capture result.
   ProcessBatchCaptureResultFunc process_batch_capture_result;
 
-  // Callback to notify shutters or errors.
+  // Callback to notify a shutter or error.
   NotifyFunc notify;
+
+  // Callback to notify a batched shutter or error.
+  NotifyBatchFunc notify_batch;
 
   // Callback to request stream buffers.
   RequestStreamBuffersFunc request_stream_buffers;
@@ -236,6 +239,9 @@ class CameraDeviceSession {
   // Process the notification returned from the HWL
   void Notify(const NotifyMessage& result);
 
+  // Process the batched notification returned from the HWL
+  void NotifyBatch(const std::vector<NotifyMessage>& results);
+
   // Process the capture result returned from the HWL
   void ProcessCaptureResult(std::unique_ptr<CaptureResult> result);
 
@@ -300,6 +306,10 @@ class CameraDeviceSession {
 
   // Tracks the returned buffers in capture results.
   void TrackReturnedBuffers(const std::vector<StreamBuffer>& buffers);
+
+  // Checks if `message` should be sent to the framework. It also updates the
+  // last shutter timestamp if systrace is enabled.
+  bool ShouldSendNotifyMessage(const NotifyMessage& message);
 
   uint32_t camera_id_ = 0;
   std::unique_ptr<CameraDeviceSessionHwl> device_session_hwl_;

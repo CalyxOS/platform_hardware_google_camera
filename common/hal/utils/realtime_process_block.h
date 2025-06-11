@@ -80,6 +80,8 @@ class RealtimeProcessBlock : public ProcessBlock {
   void NotifyHwlPipelineMessage(uint32_t pipeline_id,
                                 const NotifyMessage& message);
 
+  void NotifyHwlPipelineBatchMessage(const std::vector<NotifyMessage>& messages);
+
   HwlPipelineCallback hwl_pipeline_callback_;
   CameraDeviceSessionHwl* device_session_hwl_ = nullptr;
 

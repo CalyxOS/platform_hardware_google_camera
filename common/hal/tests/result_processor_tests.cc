@@ -61,7 +61,7 @@ TEST(ResultProcessorTest, SetResultCallback) {
 
     result_processor->SetResultCallback(
         process_capture_result, notify,
-        /*process_batch_capture_result=*/nullptr);
+        /*process_batch_capture_result=*/nullptr, /*notify_batch=*/nullptr);
   }
 }
 
@@ -120,7 +120,7 @@ TEST(ResultProcessorTest, ProcessResultAndNotify) {
     // Test again after setting result callback.
     result_processor->SetResultCallback(
         process_capture_result, notify,
-        /*process_batch_capture_result=*/nullptr);
+        /*process_batch_capture_result=*/nullptr, /*notify_batch=*/nullptr);
     SendResultsAndMessages(result_processor.get());
   }
 }
@@ -140,7 +140,8 @@ TEST(ResultProcessorTest, BasicResultProcessorResultAndNotify) {
       [&](const NotifyMessage& /*message*/) { message_received = true; });
 
   result_processor->SetResultCallback(process_capture_result, notify,
-                                      /*process_batch_capture_result=*/nullptr);
+                                      /*process_batch_capture_result=*/nullptr,
+                                      /*notify_batch=*/nullptr);
 
   ProcessBlockResult null_result;
   result_processor->ProcessResult(std::move(null_result));
@@ -171,7 +172,8 @@ TEST(ResultProcessorTest, BasicResultProcessorAddPendingRequest) {
   NotifyFunc notify = NotifyFunc([&](const NotifyMessage& /*message*/) {});
 
   result_processor->SetResultCallback(process_capture_result, notify,
-                                      /*process_batch_capture_result=*/nullptr);
+                                      /*process_batch_capture_result=*/nullptr,
+                                      /*notify_batch=*/nullptr);
 
   std::vector<ProcessBlockRequest> requests(1);
   requests[0].request.output_buffers = {StreamBuffer{}};

@@ -17,6 +17,7 @@
 #ifndef HARDWARE_GOOGLE_CAMERA_HAL_GOOGLE_CAMERA_HAL_SNAPSHOT_RESULT_PROCESSOR_H_
 #define HARDWARE_GOOGLE_CAMERA_HAL_GOOGLE_CAMERA_HAL_SNAPSHOT_RESULT_PROCESSOR_H_
 
+#include "hal_types.h"
 #include "internal_stream_manager.h"
 #include "result_processor.h"
 
@@ -36,7 +37,8 @@ class SnapshotResultProcessor : public ResultProcessor {
   // Override functions of ResultProcessor start.
   void SetResultCallback(
       ProcessCaptureResultFunc process_capture_result, NotifyFunc notify,
-      ProcessBatchCaptureResultFunc process_batch_capture_result) override;
+      ProcessBatchCaptureResultFunc process_batch_capture_result,
+      NotifyBatchFunc notify_batch) override;
 
   status_t AddPendingRequests(
       const std::vector<ProcessBlockRequest>& process_block_requests,

@@ -38,12 +38,13 @@ std::unique_ptr<ResultDispatcher> ResultDispatcher::Create(
     uint32_t partial_result_count,
     ProcessCaptureResultFunc process_capture_result,
     ProcessBatchCaptureResultFunc process_batch_capture_result,
-    NotifyFunc notify, const StreamConfiguration& stream_config,
-    std::string_view name) {
+    NotifyFunc notify, NotifyBatchFunc notify_batch,
+    const StreamConfiguration& stream_config, std::string_view name) {
   ATRACE_CALL();
   auto dispatcher = std::make_unique<ResultDispatcher>(
-      partial_result_count, process_capture_result,
-      process_batch_capture_result, notify, stream_config, name);
+      partial_result_count, std::move(process_capture_result),
+      std::move(process_batch_capture_result), std::move(notify),
+      std::move(notify_batch), stream_config, name);
   if (dispatcher == nullptr) {
     ALOGE("[%s] %s: Creating ResultDispatcher failed.",
           std::string(name).c_str(), __FUNCTION__);
@@ -57,13 +58,14 @@ ResultDispatcher::ResultDispatcher(
     uint32_t partial_result_count,
     ProcessCaptureResultFunc process_capture_result,
     ProcessBatchCaptureResultFunc process_batch_capture_result,
-    NotifyFunc notify, const StreamConfiguration& stream_config,
-    std::string_view name)
+    NotifyFunc notify, NotifyBatchFunc notify_batch,
+    const StreamConfiguration& stream_config, std::string_view name)
     : kPartialResultCount(partial_result_count),
       name_(name),
-      process_capture_result_(process_capture_result),
-      process_batch_capture_result_(process_batch_capture_result),
-      notify_(notify) {
+      process_capture_result_(std::move(process_capture_result)),
+      process_batch_capture_result_(std::move(process_batch_capture_result)),
+      notify_(std::move(notify)),
+      notify_batch_(std::move(notify_batch)) {
   ATRACE_CALL();
   pending_shutters_ = DispatchQueue<PendingShutter>(name_, "shutter");
   pending_early_metadata_ =
@@ -261,25 +263,55 @@ status_t ResultDispatcher::AddBatchResult(
   return last_error.value_or(OK);
 }
 
-status_t ResultDispatcher::AddShutter(uint32_t frame_number,
-                                      int64_t timestamp_ns,
-                                      int64_t readout_timestamp_ns) {
+status_t ResultDispatcher::AddShutterLocked(uint32_t frame_number,
+                                            int64_t timestamp_ns,
+                                            int64_t readout_timestamp_ns) {
+  status_t res = pending_shutters_.AddResult(
+      frame_number, PendingShutter{
+                        .timestamp_ns = timestamp_ns,
+                        .readout_timestamp_ns = readout_timestamp_ns,
+                        .ready = true,
+                    });
+  if (res != OK) {
+    ALOGE(
+        "[%s] %s: Failed to add shutter for frame %u , New timestamp "
+        "%" PRId64,
+        name_.c_str(), __FUNCTION__, frame_number, timestamp_ns);
+  }
+  return res;
+}
+
+status_t ResultDispatcher::AddShutter(const ShutterMessage& shutter) {
   ATRACE_CALL();
 
   {
-    std::lock_guard<std::mutex> lock(result_lock_);
-    status_t res = pending_shutters_.AddResult(
-        frame_number, PendingShutter{
-                          .timestamp_ns = timestamp_ns,
-                          .readout_timestamp_ns = readout_timestamp_ns,
-                          .ready = true,
-                      });
-    if (res != OK) {
-      ALOGE(
-          "[%s] %s: Failed to add shutter for frame %u , New timestamp "
-          "%" PRId64,
-          name_.c_str(), __FUNCTION__, frame_number, timestamp_ns);
-      return res;
+    std::lock_guard lock(result_lock_);
+    if (status_t ret =
+            AddShutterLocked(shutter.frame_number, shutter.timestamp_ns,
+                             shutter.readout_timestamp_ns);
+        ret != OK) {
+      return ret;
+    }
+  }
+  {
+    std::unique_lock<std::mutex> lock(notify_callback_lock_);
+    is_result_shutter_updated_ = true;
+    notify_callback_condition_.notify_one();
+  }
+  return OK;
+}
+
+status_t ResultDispatcher::AddBatchShutter(
+    const std::vector<ShutterMessage>& shutters) {
+  {
+    std::lock_guard lock(result_lock_);
+    for (const ShutterMessage& shutter : shutters) {
+      if (status_t ret =
+              AddShutterLocked(shutter.frame_number, shutter.timestamp_ns,
+                               shutter.readout_timestamp_ns);
+          ret != OK) {
+        return ret;
+      }
     }
   }
   {
@@ -388,7 +420,11 @@ void ResultDispatcher::NotifyCallbackThreadLoop() {
       name_.substr(/*pos=*/0, /*count=*/kPthreadNameLenMinusOne).c_str());
 
   while (1) {
-    NotifyShutters();
+    if (notify_batch_ == nullptr) {
+      NotifyShutters();
+    } else {
+      NotifyBatchShutters();
+    }
     NotifyResultMetadata();
     NotifyBuffers();
 
@@ -451,18 +487,12 @@ std::string ResultDispatcher::DumpStreamKey(const StreamKey& stream_key) const {
   }
 }
 
-void ResultDispatcher::NotifyShutters() {
-  ATRACE_CALL();
-  NotifyMessage message = {};
-  // TODO: b/347771898 - Update to not depend on running faster than data is
-  // ready
-  while (true) {
-    uint32_t frame_number = 0;
-    PendingShutter pending_shutter;
-    std::lock_guard<std::mutex> lock(result_lock_);
-    if (pending_shutters_.GetReadyData(frame_number, pending_shutter) != OK) {
-      break;
-    }
+status_t ResultDispatcher::GetPendingShutterNotificationLocked(
+    NotifyMessage& message) {
+  uint32_t frame_number = 0;
+  PendingShutter pending_shutter;
+  status_t ret = pending_shutters_.GetReadyData(frame_number, pending_shutter);
+  if (ret == OK) {
     message.type = MessageType::kShutter;
     message.message.shutter.frame_number = frame_number;
     message.message.shutter.timestamp_ns = pending_shutter.timestamp_ns;
@@ -473,7 +503,40 @@ void ResultDispatcher::NotifyShutters() {
           name_.c_str(), __FUNCTION__, message.message.shutter.frame_number,
           message.message.shutter.timestamp_ns,
           message.message.shutter.readout_timestamp_ns);
+  }
+  return ret;
+}
+
+void ResultDispatcher::NotifyShutters() {
+  ATRACE_CALL();
+  NotifyMessage message = {};
+  // TODO: b/347771898 - Update to not depend on running faster than data is
+  // ready
+  while (true) {
+    std::lock_guard<std::mutex> lock(result_lock_);
+    if (GetPendingShutterNotificationLocked(message) != OK) {
+      break;
+    }
     notify_(message);
+  }
+}
+
+void ResultDispatcher::NotifyBatchShutters() {
+  ATRACE_CALL();
+  std::vector<NotifyMessage> messages;
+  NotifyMessage message = {};
+  // TODO: b/347771898 - Update to not depend on running faster than data is
+  // ready
+  std::lock_guard<std::mutex> lock(result_lock_);
+  while (true) {
+    if (GetPendingShutterNotificationLocked(message) != OK) {
+      break;
+    }
+    messages.push_back(message);
+  }
+
+  if (!messages.empty()) {
+    notify_batch_(messages);
   }
 }
 

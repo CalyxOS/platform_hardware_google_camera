@@ -105,6 +105,12 @@ class FakeCameraDeviceSessionHwl : public CameraDeviceSessionHwl {
       const HalCameraMetadata* old_session, const HalCameraMetadata* new_session,
       bool* reconfiguration_required) const override;
 
+  bool IsFeatureCombinationSupported(
+      const android::google_camera_hal::StreamConfiguration& /*stream_config*/)
+      const {
+    return true;
+  }
+
   std::unique_ptr<ZoomRatioMapperHwl> GetZoomRatioMapperHwl() override;
 
   std::unique_ptr<google::camera_common::Profiler> GetProfiler(
@@ -170,6 +176,10 @@ class MockDeviceSessionHwl : public CameraDeviceSessionHwl {
   MOCK_METHOD(void, RepeatingRequestEnd,
               (int32_t frame_number, const std::vector<int32_t>& stream_ids),
               (override));
+
+  MOCK_CONST_METHOD1(
+      IsFeatureCombinationSupported,
+      bool(const android::google_camera_hal::StreamConfiguration& stream_config));
 
   MOCK_CONST_METHOD0(GetCameraId, uint32_t());
 

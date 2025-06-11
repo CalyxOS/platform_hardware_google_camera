@@ -75,6 +75,11 @@ RealtimeProcessBlock::RealtimeProcessBlock(
       [this](uint32_t pipeline_id, const NotifyMessage& message) {
         NotifyHwlPipelineMessage(pipeline_id, message);
       });
+
+  hwl_pipeline_callback_.notify_batch = NotifyHwlPipelineBatchMessageFunc(
+      [this](const std::vector<NotifyMessage>& messages) {
+        NotifyHwlPipelineBatchMessage(messages);
+      });
 }
 
 status_t RealtimeProcessBlock::SetResultProcessor(
@@ -254,6 +259,24 @@ void RealtimeProcessBlock::NotifyHwlPipelineMessage(
 
   ProcessBlockNotifyMessage block_message = {.message = message};
   result_processor_->Notify(block_message);
+}
+
+void RealtimeProcessBlock::NotifyHwlPipelineBatchMessage(
+    const std::vector<NotifyMessage>& messages) {
+  ATRACE_CALL();
+  if (result_processor_ == nullptr) {
+    ALOGE("%s: result processor is nullptr. Dropping messages", __FUNCTION__);
+    return;
+  }
+
+  std::vector<ProcessBlockNotifyMessage> block_messages;
+  block_messages.reserve(messages.size());
+  for (const auto& message : messages) {
+    block_messages.push_back(ProcessBlockNotifyMessage{.message = message});
+  }
+
+  std::lock_guard<std::mutex> lock(result_processor_lock_);
+  result_processor_->NotifyBatch(block_messages);
 }
 
 }  // namespace google_camera_hal

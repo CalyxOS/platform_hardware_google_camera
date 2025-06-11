@@ -65,8 +65,7 @@ class ZslResultDispatcher {
   // Add a shutter for a frame number. If the frame number doesn't belong to a
   // pending request that was previously added via AddPendingRequest(), an error
   // will be returned.
-  status_t AddShutter(uint32_t frame_number, int64_t timestamp_ns,
-                      int64_t readout_timestamp_ns);
+  status_t AddShutter(const ShutterMessage& shutter);
 
   // Add an error notification for a frame number. When this is called, we no
   // longer wait for a shutter message or result metadata for the given frame.

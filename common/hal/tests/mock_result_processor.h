@@ -20,16 +20,20 @@
 #include <gmock/gmock.h>
 #include <result_processor.h>
 
+#include "hal_types.h"
+
 namespace android {
 namespace google_camera_hal {
 
 // Defines a ResultProcessor mock using gmock.
 class MockResultProcessor : public ResultProcessor {
  public:
-  MOCK_METHOD3(SetResultCallback,
-               void(ProcessCaptureResultFunc process_capture_result,
-                    NotifyFunc notify,
-                    ProcessBatchCaptureResultFunc process_batch_capture_result));
+  MOCK_METHOD(void, SetResultCallback,
+              (ProcessCaptureResultFunc process_capture_result,
+               NotifyFunc notify,
+               ProcessBatchCaptureResultFunc process_batch_capture_result,
+               NotifyBatchFunc notify_batch),
+              (override));
 
   MOCK_METHOD2(
       AddPendingRequests,

@@ -18,6 +18,7 @@
 #define HARDWARE_GOOGLE_CAMERA_HAL_HWL_INTERFACE_HWL_TYPES_H_
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <string>
 #include <unordered_set>
@@ -104,6 +105,10 @@ using HwlProcessPipelineBatchResultFunc = std::function<void(
 using NotifyHwlPipelineMessageFunc = std::function<void(
     uint32_t /*pipeline_id*/, const NotifyMessage& /*message*/)>;
 
+// Callback to notify a batched message from HWL.
+using NotifyHwlPipelineBatchMessageFunc =
+    std::function<void(const std::vector<NotifyMessage>& /*messages*/)>;
+
 // Defines callbacks to notify from a HWL pipeline.
 struct HwlPipelineCallback {
   // Callback to notify when a HWL pipeline produces a capture result.
@@ -114,6 +119,9 @@ struct HwlPipelineCallback {
 
   // Callback to notify shutters or errors.
   NotifyHwlPipelineMessageFunc notify;
+
+  // Callback to notify batched shutters or errors.
+  NotifyHwlPipelineBatchMessageFunc notify_batch;
 };
 
 // Callback to invoke to request buffers from HAL. Only in case of HFR, there

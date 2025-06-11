@@ -179,6 +179,13 @@ class CameraDeviceSessionHwl : public PhysicalCameraInfoHwl {
       const HalCameraMetadata* old_session, const HalCameraMetadata* new_session,
       bool* reconfiguration_required) const = 0;
 
+  // Check if the feature combination contained within the given
+  // StreamConfiguration is supported by the current device.
+  virtual bool IsFeatureCombinationSupported(
+      const StreamConfiguration& /*stream_config*/) const {
+    return true;
+  }
+
   // Get zoom ratio mapper from HWL.
   virtual std::unique_ptr<ZoomRatioMapperHwl> GetZoomRatioMapperHwl() = 0;
 

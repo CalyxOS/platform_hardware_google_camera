@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+// #define LOG_NDEBUG 0
 #define LOG_TAG "StreamBufferCacheManager"
 #define ATRACE_TAG ATRACE_TAG_CAMERA
+
+#include "stream_buffer_cache_manager.h"
 
 #include <cutils/native_handle.h>
 #include <cutils/properties.h>
@@ -27,7 +29,6 @@
 
 #include <chrono>
 
-#include "stream_buffer_cache_manager.h"
 #include "utils.h"
 
 using namespace std::chrono_literals;
@@ -112,8 +113,9 @@ status_t StreamBufferCacheManager::RegisterStream(
     return BAD_VALUE;
   }
 
-  if (reg_info.num_buffers_to_cache != 1) {
-    ALOGE("%s: Only support caching one buffer.", __FUNCTION__);
+  if (reg_info.num_buffers_to_cache < 1) {
+    ALOGE("%s: Number of buffers must be one at least, but got %u",
+          __FUNCTION__, reg_info.num_buffers_to_cache);
     return BAD_VALUE;
   }
 
@@ -551,13 +553,13 @@ status_t StreamBufferCacheManager::StreamBufferCache::Refill() {
 }
 
 bool StreamBufferCacheManager::StreamBufferCache::RefillableLocked() const {
-  // No need to refill if the buffer cache is not active
+  // No need to refill if the buffer cache is not active.
   if (!is_active_) {
     return false;
   }
 
-  // Need to refill if the cache is not full
-  return cached_buffers_.size() < cache_info_.num_buffers_to_cache;
+  // Need to refill if the cache is empty.
+  return cached_buffers_.empty();
 }
 
 status_t

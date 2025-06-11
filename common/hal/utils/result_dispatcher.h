@@ -46,13 +46,15 @@ class ResultDispatcher {
   // results at once.
   // stream_config is the session stream configuration.
   // notify is the function to notify shutter messages.
+  // notify_batch is the function to notify multiple shutter messages at once.
   // If process_batch_capture_result is not null, it has the priority over
   // process_capture_result.
   static std::unique_ptr<ResultDispatcher> Create(
       uint32_t partial_result_count,
       ProcessCaptureResultFunc process_capture_result,
       ProcessBatchCaptureResultFunc process_batch_capture_result,
-      NotifyFunc notify, const StreamConfiguration& stream_config,
+      NotifyFunc notify, NotifyBatchFunc notify_batch,
+      const StreamConfiguration& stream_config,
       std::string_view name = "ResultDispatcher");
 
   virtual ~ResultDispatcher();
@@ -73,8 +75,13 @@ class ResultDispatcher {
   // Add a shutter for a frame number. If the frame number doesn't belong to a
   // pending request that was previously added via AddPendingRequest(), an error
   // will be returned.
-  status_t AddShutter(uint32_t frame_number, int64_t timestamp_ns,
-                      int64_t readout_timestamp_ns) EXCLUDES(result_lock_);
+  status_t AddShutter(const ShutterMessage& shutter) EXCLUDES(result_lock_);
+
+  // Add multiple shutters for frames.  If the frame number of any frame doesn't
+  // belong to a pending request that was previously added via
+  // AddPendingRequest(), an error will be returned.
+  status_t AddBatchShutter(const std::vector<ShutterMessage>& shutters)
+      EXCLUDES(result_lock_);
 
   // Add an error notification for a frame number. When this is called, we no
   // longer wait for a shutter message or result metadata for the given frame.
@@ -86,7 +93,8 @@ class ResultDispatcher {
   ResultDispatcher(uint32_t partial_result_count,
                    ProcessCaptureResultFunc process_capture_result,
                    ProcessBatchCaptureResultFunc process_batch_capture_result,
-                   NotifyFunc notify, const StreamConfiguration& stream_config,
+                   NotifyFunc notify, NotifyBatchFunc notify_batch,
+                   const StreamConfiguration& stream_config,
                    std::string_view name = "ResultDispatcher");
 
  private:
@@ -198,6 +206,10 @@ class ResultDispatcher {
   // callback thread.
   status_t AddResultImpl(std::unique_ptr<CaptureResult> result);
 
+  // Add a shutter to `pending_shutters_`.
+  status_t AddShutterLocked(uint32_t frame_number, int64_t timestamp_ns,
+                            int64_t readout_timestamp_ns) REQUIRES(result_lock_);
+
   // Compose a capture result which contains a result metadata.
   std::unique_ptr<CaptureResult> MakeResultMetadata(
       uint32_t frame_number, std::unique_ptr<HalCameraMetadata> metadata,
@@ -218,6 +230,9 @@ class ResultDispatcher {
 
   // Check all pending shutters and invoke notify_ with shutters that are ready.
   void NotifyShutters() EXCLUDES(result_lock_);
+
+  // Check all pending shutters and invoke notify_batch_ with shutters that are ready.
+  void NotifyBatchShutters() EXCLUDES(result_lock_);
 
   // Check all pending result metadata and invoke the capture result callback
   // with the result metadata that are ready.
@@ -241,6 +256,10 @@ class ResultDispatcher {
   // result_lock_.
   void InitializeGroupStreamIdsMap(const StreamConfiguration& stream_config)
       EXCLUDES(result_lock_);
+
+  // Gets the shutter data  from `pending_shutters_`, and fills out `message` with it.
+  status_t GetPendingShutterNotificationLocked(NotifyMessage& message)
+      REQUIRES(result_lock_);
 
   // Name used for debugging purpose to disambiguate multiple ResultDispatchers.
   std::string name_;
@@ -276,6 +295,7 @@ class ResultDispatcher {
   ProcessCaptureResultFunc process_capture_result_;
   ProcessBatchCaptureResultFunc process_batch_capture_result_;
   NotifyFunc notify_;
+  NotifyBatchFunc notify_batch_;
 
   // A thread to run NotifyCallbackThreadLoop().
   std::thread notify_callback_thread_;

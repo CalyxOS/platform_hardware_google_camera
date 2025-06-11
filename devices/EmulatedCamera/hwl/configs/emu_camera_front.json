@@ -572,7 +572,8 @@
    "1441792",
    "851985",
    "917536",
-   "2097152"
+   "2097152",
+   "2293760"
   ],
   "android.request.availableResultKeys": [
    "0",
@@ -653,7 +654,8 @@
    "1703938",
    "917530",
    "851985",
-   "917536"
+   "917536",
+   "2293760"
   ],
   "android.request.maxNumOutputStreams": [
    "1",
@@ -4556,6 +4558,16 @@
   ],
   "android.tonemap.maxCurvePoints": [
    "64"
+  ],
+  "android.visualEffect.capabilities": [
+   "BACKGROUND_BLUR",
+   "FACE_RETOUCH",
+   "PORTRAIT_RELIGHT"
+  ],
+  "android.visualEffect.backgroundBlurModes": [
+    "0",
+    "1",
+    "2"
   ]
  }
 ]
